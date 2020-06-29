@@ -32,7 +32,11 @@ func (m *Message) GetMessage() *Message {
 
 // String returns the namespace and name as a single string.
 func (m *Message) String() string {
-	return fmt.Sprintf("%s.%s", m.Header["namespace"], m.Header["name"])
+	if m !=nil {
+		return fmt.Sprintf("%s.%s", m.Header["namespace"], m.Header["name"])
+	} else {
+		return ""
+	}
 }
 
 // Typed returns a more specific type for this message.
@@ -69,6 +73,8 @@ func (m *Message) Typed() TypedMessage {
 		return fill(new(SetEndpoint), m)
 	case "System.ResetUserInactivity":
 		return fill(new(ResetUserInactivity), m)
+	case "TemplateRuntime.RenderTemplate":
+		return fill(new(RenderTemplate), m)
 	default:
 		return m
 	}

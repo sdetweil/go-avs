@@ -131,3 +131,4 @@ func (s *Stream) ContentId() string {
 	}
 	return s.URL[4:]
 }
+

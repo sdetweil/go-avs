@@ -13,6 +13,7 @@ import (
 // Multipart object returned by AVS.
 type responsePart struct {
 	Directive *Message
+//	Data json.RawMessage
 }
 
 // Client enables making requests and creating downchannels to AVS.
@@ -40,6 +41,12 @@ func (c *Client) CreateDownchannel(accessToken string) (<-chan *Message, error) 
 	go func() {
 		defer close(directives)
 		defer resp.Body.Close()
+		response := &Response{
+			RequestId:  resp.Header.Get("x-amzn-requestid"),
+			Directives: []*Message{},
+			Content:    map[string][]byte{},
+			Data: []byte(" "),
+		}
 		mr, err := newMultipartReaderFromResponse(resp)
 		if err != nil {
 			return
@@ -50,16 +57,47 @@ func (c *Client) CreateDownchannel(accessToken string) (<-chan *Message, error) 
 			if err != nil {
 				break
 			}
+			mediatype, _, err := mime.ParseMediaType(p.Header.Get("Content-Type"))
+			if err != nil {
+				break
+			}
 			data, err := ioutil.ReadAll(p)
 			if err != nil {
 				break
 			}
-			var response responsePart
-			err = json.Unmarshal(data, &response)
-			if err != nil {
-				break
+			response.Data = data
+			if contentId := p.Header.Get("Content-ID"); contentId != "" {
+				// This part is a referencable piece of content.
+				// XXX: Content-ID generally always has angle brackets, but there may be corner cases?
+				response.Content[contentId[1:len(contentId)-1]] = response.Data
+			} else if mediatype == "application/json"  {
+				// This is a directive.
+				var response responsePart
+				err = json.Unmarshal(data, &response)
+				if err != nil {
+					break
+				}
+				if response.Directive == nil {
+					break;
+					//return nil, fmt.Errorf("missing directive %s", string(data))
+				}
+				directives <- response.Directive
+			} else if  mediatype == "application/octet-stream" {
+				// This is a directive.
+				var response responsePart
+				err = json.Unmarshal(data, &response)
+				if err != nil {
+					break
+				}
+				if response.Directive == nil {
+					break;
+					//return nil, fmt.Errorf("missing directive %s", string(data))
+				}
+				directives <- response.Directive
+			} else {
+				break;
+				//return nil, fmt.Errorf("unhandled part %s", p)
 			}
-			directives <- response.Directive
 		}
 	}()
 	return directives, nil
@@ -116,6 +154,7 @@ func (c *Client) Do(request *Request) (*Response, error) {
 		RequestId:  resp.Header.Get("x-amzn-requestid"),
 		Directives: []*Message{},
 		Content:    map[string][]byte{},
+		Data: []byte(" "),
 	}
 	if !more {
 		// AVS returned an empty response, so there's nothing to parse.
@@ -142,11 +181,24 @@ func (c *Client) Do(request *Request) (*Response, error) {
 		if err != nil {
 			return nil, err
 		}
-		if contentId := p.Header.Get("Content-ID"); contentId != "" {
+ 		if contentId := p.Header.Get("Content-ID"); contentId != "" {
 			// This part is a referencable piece of content.
 			// XXX: Content-ID generally always has angle brackets, but there may be corner cases?
 			response.Content[contentId[1:len(contentId)-1]] = data
-		} else if mediatype == "application/json" {
+		} else if mediatype == "application/json"  {
+			// This is a directive.
+			var resp responsePart
+			err = json.Unmarshal(data, &resp)
+			if err != nil {
+				return nil, err
+			}
+		response.Data = data
+		fmt.Println("client %s", string(response.Data))
+			if resp.Directive == nil {
+				return nil, fmt.Errorf("missing directive %s", string(data))
+			}
+			response.Directives = append(response.Directives, resp.Directive)
+		} else 	if mediatype == "application/octet-stream" {
 			// This is a directive.
 			var resp responsePart
 			err = json.Unmarshal(data, &resp)

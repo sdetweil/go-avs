@@ -80,6 +80,10 @@ func CreateDownchannel(accessToken string) (<-chan *Message, error) {
 	return DefaultClient.CreateDownchannel(accessToken)
 }
 
+func Ping(accessToken string)  error {
+	return DefaultClient.Ping(accessToken)
+}
+
 // PostEvent will post an event to AVS.
 //
 // PostEvent is a wrapper around DefaultClient.Do.
